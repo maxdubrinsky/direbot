@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/mail"
 	"os"
 	"os/signal"
 	"strings"
@@ -65,6 +66,16 @@ var (
 		"maildequate": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			forward := i.ApplicationCommandData().Options[0].StringValue()
 
+			if _, err := mail.ParseAddress(forward); err != nil {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "Invalid forwarding address, Mx. Tables :attempt:",
+					},
+				})
+				return
+			}
+
 			var address string
 			if len(i.ApplicationCommandData().Options) >= 2 {
 				address = i.ApplicationCommandData().Options[1].StringValue()
@@ -77,6 +88,16 @@ var (
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
 					Data: &discordgo.InteractionResponseData{
 						Content: "Couldn't find your username for some reason, try again? :attempt:",
+					},
+				})
+				return
+			}
+
+			if _, err := mail.ParseAddress(fmt.Sprintf("%s@mostadequate.gg", address)); err != nil {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "The provided address will be invalid :attempt:",
 					},
 				})
 				return
