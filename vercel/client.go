@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 )
@@ -35,8 +37,9 @@ type RecordResponse struct {
 	Records []Record `json:"records"`
 }
 
-func (vc VercelClient) GetDomainRecords() (*RecordResponse, error) {
-	req, err := http.NewRequest(http.MethodGet, "https://api.vercel.com/v4/domains/mostadequate.gg/records", nil)
+func (vc VercelClient) makeRequest(method string, endpoint string, body io.Reader) (*http.Response, error) {
+	url := fmt.Sprintf("https://api.vercel.com%s", endpoint)
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +52,16 @@ func (vc VercelClient) GetDomainRecords() (*RecordResponse, error) {
 
 	if res.StatusCode != 200 {
 		return nil, errors.New(res.Status)
+	}
+
+	return res, err
+}
+
+func (vc VercelClient) GetDomainRecords(domain string) (*RecordResponse, error) {
+	url := fmt.Sprintf("/v4/domains/%s/records", domain)
+	res, err := vc.makeRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
 	}
 
 	if res.Body != nil {
@@ -66,7 +79,7 @@ func (vc VercelClient) GetDomainRecords() (*RecordResponse, error) {
 	return &data, err
 }
 
-func (vc VercelClient) CreateDomainTXTRecord(value string) error {
+func (vc VercelClient) CreateDomainTXTRecord(domain, value string) error {
 	record := DnsRecord{
 		Name:  "",
 		Type:  "TXT",
@@ -78,13 +91,8 @@ func (vc VercelClient) CreateDomainTXTRecord(value string) error {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, "https://api.vercel.com/v4/domains/mostadequate.gg/records", bytes.NewBuffer(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Add("Authorization", "Bearer "+vc.Token)
-
-	_, err = http.DefaultClient.Do(req)
+	url := fmt.Sprintf("/v4/domains/%s/records", domain)
+	_, err = vc.makeRequest(http.MethodPost, url, bytes.NewBuffer(body))
 
 	return err
 }

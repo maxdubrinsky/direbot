@@ -2,21 +2,16 @@ package main
 
 import (
 	"direbot/vercel"
-	"flag"
 	"fmt"
 	"log"
 	"net/mail"
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 
+	"github.com/alecthomas/kong"
 	"github.com/bwmarrin/discordgo"
-)
-
-var (
-	GuildID     = flag.String("guild", "", "Test guild id")
-	BotToken    = flag.String("bot-token", "", "Token for the bot")
-	VercelToken = flag.String("vercel-token", "", "Token for vercel")
 )
 
 var (
@@ -24,13 +19,19 @@ var (
 	vc *vercel.VercelClient
 )
 
+var cli struct {
+	BotToken    string `required:"" env:"DIREBOT_BOT_TOKEN"`
+	VercelToken string `required:"" env:"DIREBOT_VERCEL_TOKEN"`
+	Domain      string `required:"" env:"DIREBOT_DOMAIN"`
+}
+
 func init() {
-	flag.Parse()
+	kong.Parse(&cli)
 }
 
 func init() {
 	var err error
-	s, err = discordgo.New("Bot " + *BotToken)
+	s, err = discordgo.New("Bot " + cli.BotToken)
 	if err != nil {
 		log.Fatalf("Invalid bot parameters: %v", err)
 	}
@@ -38,7 +39,7 @@ func init() {
 
 func init() {
 	vc = &vercel.VercelClient{
-		Token: *VercelToken,
+		Token: cli.VercelToken,
 	}
 }
 
@@ -93,7 +94,7 @@ var (
 				return
 			}
 
-			if _, err := mail.ParseAddress(fmt.Sprintf("%s@mostadequate.gg", address)); err != nil {
+			if _, err := mail.ParseAddress(fmt.Sprintf("%s@%s", address, cli.Domain)); err != nil {
 				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
 					Data: &discordgo.InteractionResponseData{
@@ -106,7 +107,7 @@ var (
 			log.Printf("recieved request: forward=%s, address=%s\n", forward, address)
 
 			// Check for an existing name. -md
-			res, err := vc.GetDomainRecords()
+			res, err := vc.GetDomainRecords(cli.Domain)
 			if err != nil || res == nil {
 				log.Printf("failed to list domains %s", err)
 				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -131,7 +132,8 @@ var (
 			}
 
 			// Name hasn't been taken, create the record. -md
-			err = vc.CreateDomainTXTRecord(fmt.Sprintf("forward-email=%s:%s", address, forward))
+			record := fmt.Sprintf("forward-email=%s:%s", address, forward)
+			err = vc.CreateDomainTXTRecord(cli.Domain, record)
 			if err != nil {
 				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -169,7 +171,7 @@ func main() {
 	}
 
 	for _, v := range commands {
-		_, err := s.ApplicationCommandCreate(s.State.User.ID, *GuildID, v)
+		_, err := s.ApplicationCommandCreate(s.State.User.ID, "", v)
 		if err != nil {
 			log.Panicf("Cannot create '%v' command: %v", v.Name, err)
 		} else {
@@ -179,8 +181,8 @@ func main() {
 
 	defer s.Close()
 
-	stop := make(chan os.Signal)
-	signal.Notify(stop, os.Interrupt)
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 	log.Println("Gracefully shutdowning")
 }
